@@ -3,6 +3,7 @@ import hashlib
 import os
 import sys
 import settings
+import argparse
 from bs4 import BeautifulSoup
 
 def clear_lines(num):
@@ -38,11 +39,12 @@ def get_movie_choices(current_list):
             print 'Invalid response - "q" to exit choice / enter a number to download'
         clear_lines(2)
 
-def scrape_page(CURRENT_PAGE_NO):
-    soup = get_html(settings.SHAANIG_URL + str(CURRENT_PAGE_NO)  + '.html')
+def scrape_page(page_no, quality):
+    soup = get_html(settings.SHAANIG_URL + str(page_no)  + '.html')
     return {
         thread.find('a', {'class': 'title'}).string: thread.find('a', {'class': 'title'})['href']
         for thread in soup.body.find('ol', {'id': 'threads'}).find_all('li', {'class': 'threadbit'})
+        if any(x in thread.find('a', {'class': 'title'}).string for x in quality.split('/'))
     }
 
 def main():
@@ -50,13 +52,17 @@ def main():
     CURRENT_PAGE_NO = 1
     THREAD_LIST = {}
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-q', '--quality', help='filter only given quality', default='1080p/720p', choices=['1080p', '720p', '1080p/720p'])
+    args = vars(parser.parse_args())
+
     # Make download dir if it doesn't exist
     if not os.path.exists(settings.TORRENT_FILE_DOWNLOAD_DIR):
         os.makedirs(settings.TORRENT_FILE_DOWNLOAD_DIR)
 
     # Run program until user wants to quit
     while USER_RESPONSE != 'q':
-        current_list = THREAD_LIST[CURRENT_PAGE_NO] if THREAD_LIST.has_key(CURRENT_PAGE_NO) else scrape_page(CURRENT_PAGE_NO)
+        current_list = THREAD_LIST[CURRENT_PAGE_NO] if THREAD_LIST.has_key(CURRENT_PAGE_NO) else scrape_page(CURRENT_PAGE_NO, args['quality'])
         if not THREAD_LIST.has_key(CURRENT_PAGE_NO):
             THREAD_LIST.update({
                 CURRENT_PAGE_NO:current_list
@@ -74,7 +80,7 @@ def main():
             elif USER_RESPONSE != 'q':
                 print 'Invalid response - "n" next page/ "p" previous page/ enter a page number/ "q" to exit program'
             clear_lines(2)
-        clear_lines(len(current_list))
+        clear_lines(len(current_list) -1)
 
 if __name__ == "__main__":
     sys.exit(main())
