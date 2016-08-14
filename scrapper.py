@@ -1,6 +1,7 @@
 import urllib2
 import hashlib
 import os
+import sys
 import settings
 from bs4 import BeautifulSoup
 
@@ -17,49 +18,48 @@ def save_torrent_to_disk(thread_title, thread_link):
     torrent = urllib2.urlopen(
         soup.body.find('div', {'class': 'attachments'}).find('a', {'class': 'downloadbutton_attachments'})['href']
     )
-    SHA1_HASH = hashlib.sha1()
-    SHA1_HASH.update(thread_title)
-    torrent_filename_location = settings.TORRENT_FILE_DOWNLOAD_DIR + "/" + SHA1_HASH.hexdigest() + '.torrent'
+    sha1_hash = hashlib.sha1()
+    sha1_hash.update(thread_title)
+    torrent_filename_location = settings.TORRENT_FILE_DOWNLOAD_DIR + "/" + sha1_hash.hexdigest() + '.torrent'
     with open(torrent_filename_location, 'w') as f:
         f.write(torrent.read())
     return torrent_filename_location
 
 def get_movie_choices(current_list):
-    TRANSMISSION_SETTINGS = '\'' + settings.TRANSMISSION_USERNAME + ':' + settings.TRANSMISSION_PASSWORD + '\''
-
-    movie_choice = raw_input("Please enter your choice (q/#): ")
+    movie_choice = ''
     while movie_choice != 'q':
+        movie_choice = raw_input("Please enter your choice (q/#): ")
         if movie_choice.isdigit() and int(movie_choice) > 0 and int(movie_choice) < len(current_list):
             os.system(
-                "transmission-remote -n " + TRANSMISSION_SETTINGS + " -a " +
+                "transmission-remote -n " + '\'' + settings.TRANSMISSION_USERNAME + ':' + settings.TRANSMISSION_PASSWORD + '\'' + " -a " +
                 save_torrent_to_disk(current_list.keys()[int(movie_choice)-1], current_list[current_list.keys()[int(movie_choice)-1]])
             )
-            movie_choice = raw_input("Please enter your choice (q/#): ")
         else:
             print 'Invalid response - "q" to exit choice / enter a number to download'
-            movie_choice = raw_input("Please enter your choice (q/#): ")
         clear_lines(2)
+
+def scrape_page(CURRENT_PAGE_NO):
+    soup = get_html(settings.SHAANIG_URL + str(CURRENT_PAGE_NO)  + '.html')
+    return {
+        thread.find('a', {'class': 'title'}).string: thread.find('a', {'class': 'title'})['href']
+        for thread in soup.body.find('ol', {'id': 'threads'}).find_all('li', {'class': 'threadbit'})
+    }
 
 def main():
     USER_RESPONSE = ''
     CURRENT_PAGE_NO = 1
-    MOVIE_LIST = {}
+    THREAD_LIST = {}
 
     # Make download dir if it doesn't exist
     if not os.path.exists(settings.TORRENT_FILE_DOWNLOAD_DIR):
         os.makedirs(settings.TORRENT_FILE_DOWNLOAD_DIR)
 
+    # Run program until user wants to quit
     while USER_RESPONSE != 'q':
-        if MOVIE_LIST.has_key(CURRENT_PAGE_NO):
-            current_list = MOVIE_LIST[CURRENT_PAGE_NO]
-        else:
-            soup = get_html(settings.SHAANIG_URL + str(CURRENT_PAGE_NO)  + '.html')
-            current_list = {
-                thread.find('a', {'class': 'title'}).string: thread.find('a', {'class': 'title'})['href']
-                for thread in soup.body.find('ol', {'id': 'threads'}).find_all('li', {'class': 'threadbit'})
-            }
-            MOVIE_LIST.update({
-                CURRENT_PAGE_NO: current_list
+        current_list = THREAD_LIST[CURRENT_PAGE_NO] if THREAD_LIST.has_key(CURRENT_PAGE_NO) else scrape_page(CURRENT_PAGE_NO)
+        if not THREAD_LIST.has_key(CURRENT_PAGE_NO):
+            THREAD_LIST.update({
+                CURRENT_PAGE_NO:current_list
             })
         for movie in current_list.keys():
             print '[' + str(current_list.keys().index(movie)+1) + '] ' + movie
@@ -73,7 +73,8 @@ def main():
                 CURRENT_PAGE_NO = int(USER_RESPONSE)
             elif USER_RESPONSE != 'q':
                 print 'Invalid response - "n" next page/ "p" previous page/ enter a page number/ "q" to exit program'
-                clear_lines(2)
-        clear_lines(len(current_list) + 2)
+            clear_lines(2)
+        clear_lines(len(current_list))
 
-main()
+if __name__ == "__main__":
+    sys.exit(main())
